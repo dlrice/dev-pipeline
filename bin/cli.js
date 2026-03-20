@@ -1,35 +1,60 @@
 #!/usr/bin/env node
 
 const command = process.argv[2];
+const args = process.argv.slice(3);
 
 const HELP = `
-  spec-driven-pipeline — Multi-LLM development pipeline
+  aidev — Multi-LLM spec-driven development pipeline
 
   Usage:
-    dev-pipeline init          Onboard the pipeline into the current repo
-    dev-pipeline update        Update pipeline scripts (preserves config and docs)
-    dev-pipeline doctor        Check that all tools are installed and authenticated
-    dev-pipeline help          Show this help message
+    aidev init                 Set up aidev in the current repo (creates aidev.config.json)
+    aidev run <feature>        Run the pipeline for a feature spec
+    aidev doctor               Check that all tools are installed and authenticated
+    aidev setup                Install CLI agents (Claude Code, Gemini CLI, Qwen Code)
+    aidev help                 Show this help message
 
-  Install into any repo:
-    cd your-project
-    npx github:dlrice/dev-pipeline init
+  Pipeline flags (for 'run'):
+    --from N                   Start from phase N
+    --only N                   Run only phase N
+    --force                    Skip complexity halts
+    --reset                    Clear state and start over
+
+  Quick start:
+    aidev init
+    aidev setup
+    cp aidev/specs/_template.md aidev/specs/my-feature.md
+    # Edit the spec...
+    aidev run my-feature
 `;
 
 async function main() {
   switch (command) {
-    case 'init':
+    case 'init': {
       const { init } = require('../lib/init');
       await init();
       break;
-    case 'update':
-      const { update } = require('../lib/update');
-      await update();
+    }
+    case 'run': {
+      const feature = args[0];
+      if (!feature) {
+        console.error('  Error: feature name required.');
+        console.error('  Usage: aidev run <feature-name>');
+        process.exit(1);
+      }
+      const { run } = require('../lib/run');
+      await run(feature, args.slice(1));
       break;
-    case 'doctor':
+    }
+    case 'doctor': {
       const { doctor } = require('../lib/doctor');
       await doctor();
       break;
+    }
+    case 'setup': {
+      const { setup } = require('../lib/setup');
+      await setup();
+      break;
+    }
     case 'help':
     case '--help':
     case '-h':
@@ -37,7 +62,7 @@ async function main() {
       console.log(HELP);
       break;
     default:
-      console.error(`Unknown command: ${command}`);
+      console.error(`  Unknown command: ${command}`);
       console.log(HELP);
       process.exit(1);
   }

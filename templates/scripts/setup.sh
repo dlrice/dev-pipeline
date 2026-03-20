@@ -11,7 +11,7 @@ NC='\033[0m'
 
 echo ""
 echo "=========================================="
-echo "  Spec-Driven Pipeline — Setup"
+echo "  aidev — Setup"
 echo "=========================================="
 echo ""
 
@@ -195,81 +195,11 @@ fi
 
 echo ""
 
-# ─── Create directory structure (idempotent) ─────────────────────
-echo "Ensuring directory structure..."
-
-DIRS=(
-    "pipeline/specs"
-    "pipeline/plans"
-    "pipeline/reviews/spec"
-    "pipeline/reviews/plan"
-    "pipeline/reviews/implementation"
-    "pipeline/tests/gemini"
-    "pipeline/tests/qwen"
-    "pipeline/scripts"
-    "pipeline/logs"
-    "pipeline/signals"
-    "docs"
-    "tests"
-    "src"
-)
-
-for dir in "${DIRS[@]}"; do
-    mkdir -p "$dir"
-done
-echo -e "${GREEN}✓${NC} Directory structure ready"
-
-# ─── Create stub files (do NOT overwrite existing) ───────────────
-echo "Checking stub files..."
-
-STUB_FILES=(
-    "pipeline/specs/_template.md"
-    "CLAUDE.md"
-    "GEMINI.md"
-    "AGENTS.md"
-    "pipeline/config.json"
-    "docs/ARCHITECTURE.md"
-    "docs/CONVENTIONS.md"
-    "docs/DATA-MODEL.md"
-    "docs/DEPENDENCIES.md"
-    "docs/DECISIONS.md"
-)
-
-ALL_EXIST=true
-for file in "${STUB_FILES[@]}"; do
-    if [ ! -f "$file" ]; then
-        ALL_EXIST=false
-        echo -e "${YELLOW}!${NC} Missing: $file (should be in repo)"
-    fi
-done
-
-if [ "$ALL_EXIST" = true ]; then
-    echo -e "${GREEN}✓${NC} All stub files present"
-fi
-
-# ─── Bootstrap docs from existing codebase ───────────────────────
-if [ "${1:-}" = "--bootstrap" ]; then
-    echo ""
-    echo "Bootstrapping documentation from codebase..."
-    echo -e "${YELLOW}Warning:${NC} This will overwrite files in docs/."
-    read -p "Continue? (y/N) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "  Running Claude Code to generate ARCHITECTURE.md and DATA-MODEL.md..."
-        claude -p "Scan this entire codebase. Read every file in src/, tests/, and config files. Generate docs/ARCHITECTURE.md and docs/DATA-MODEL.md as described in CLAUDE.md." --dangerously-skip-permissions || true
-
-        echo "  Running Gemini CLI to generate CONVENTIONS.md..."
-        gemini -p "Read every file in src/ and tests/. Generate docs/CONVENTIONS.md by inferring conventions actually in use." --yolo || true
-
-        echo "  Running Claude Code to generate DEPENDENCIES.md..."
-        claude -p "Read package.json and pipeline/config.json. Generate docs/DEPENDENCIES.md listing every non-trivial dependency with what it does and where it is used." --dangerously-skip-permissions || true
-
-        echo "  Running Claude Code to generate DECISIONS.md skeleton..."
-        claude -p "Scan the codebase and infer architectural decisions. Generate docs/DECISIONS.md with the decision and alternatives. Leave Reasoning fields for the developer to fill in." --dangerously-skip-permissions || true
-
-        echo ""
-        echo -e "${GREEN}✓${NC} Bootstrap complete. Review and correct all files in docs/."
-    fi
+# ─── Check for aidev config ──────────────────────────────────────
+if [ -f "aidev.config.json" ]; then
+    echo -e "${GREEN}✓${NC} aidev.config.json found"
+else
+    echo -e "${YELLOW}!${NC} aidev.config.json not found. Run 'aidev init' first."
 fi
 
 
@@ -309,7 +239,7 @@ if [ "$AUTH_ISSUES" -gt 0 ]; then
     echo "  └──────────────────────────────────────────────────────────────┘"
     echo ""
     echo "  After authenticating, verify with:"
-    echo -e "    ${GREEN}npx dev-pipeline doctor${NC}"
+    echo -e "    ${GREEN}aidev doctor${NC}"
     echo ""
 else
     echo -e "  ${GREEN}All tools installed and authenticated!${NC}"
@@ -317,7 +247,7 @@ else
 fi
 
 echo "  To start the pipeline on a feature:"
-echo "    cp pipeline/specs/_template.md pipeline/specs/my-feature.md"
-echo "    # Edit pipeline/specs/my-feature.md"
-echo -e "    ${GREEN}./pipeline/scripts/dev-loop.sh my-feature${NC}"
+echo "    cp aidev/specs/_template.md aidev/specs/my-feature.md"
+echo "    # Edit aidev/specs/my-feature.md"
+echo -e "    ${GREEN}aidev run my-feature${NC}"
 echo ""

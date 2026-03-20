@@ -1,9 +1,9 @@
 {
-  "name": "spec-driven-pipeline",
-  "version": "1.0.0",
-  "description": "Automated spec-driven development pipeline using Claude Code, Gemini CLI, and Qwen Code",
+  "name": "aidev",
+  "version": "2.0.0",
+  "description": "Multi-LLM spec-driven development pipeline — orchestrates Claude Code, Gemini CLI, and Qwen Code",
   "bin": {
-    "dev-pipeline": "./bin/cli.js"
+    "aidev": "./bin/cli.js"
   },
   "files": [
     "bin/",
@@ -24,11 +24,12 @@
     "gemini",
     "qwen",
     "spec-driven",
-    "testing"
+    "multi-agent",
+    "code-generation"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dlrice/dev-pipeline.git"
+    "url": "https://github.com/dlrice/aidev.git"
   }
 }

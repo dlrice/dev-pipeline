@@ -1,69 +1,57 @@
-# Spec-Driven Development Pipeline
+# aidev
 
-An automated development pipeline that orchestrates three cloud-based LLM agents to produce high-quality code from markdown specifications.
+A global CLI tool that orchestrates three LLM agents to produce high-quality code from markdown specifications.
 
 **Claude Code** (paid, $20/mo) handles implementation and planning. **Gemini CLI** and **Qwen Code** (both free) handle spec review, test generation, implementation review, and documentation.
 
-## Install into any repo
+## Install
+
+```bash
+npm install -g github:dlrice/aidev
+```
+
+## Quick start
 
 ```bash
 cd your-project
-npx github:dlrice/dev-pipeline init
-```
+aidev init                    # Creates aidev.config.json + aidev/specs/
+aidev setup                   # Installs CLI agents (Claude, Gemini, Qwen)
 
-The `init` command will:
-
-1. Scan your `package.json` and config files to detect your tech stack
-2. Ask you to confirm what it found and fill any gaps
-3. Generate all pipeline files (agent instructions, scripts, config, doc stubs)
-4. Tell you what to do next
-
-**Private repos:** If your repo is private, ensure the user has `gh auth login` configured or use a personal access token. Install with:
-
-```bash
-npx github:dlrice/dev-pipeline#main init
+cp aidev/specs/_template.md aidev/specs/my-feature.md
+# Edit the spec...
+aidev run my-feature          # Runs the full pipeline
 ```
 
 ## Commands
 
 ```bash
-# Onboard the pipeline into a new repo
-npx github:dlrice/dev-pipeline init
-
-# Update pipeline scripts in an existing repo (preserves config and docs)
-npx github:dlrice/dev-pipeline update
-
-# Check that all tools are installed
-npx github:dlrice/dev-pipeline doctor
+aidev init                    # Set up aidev in a repo (creates config + spec dir)
+aidev run <feature>           # Run the pipeline for a feature
+aidev doctor                  # Check that all tools are installed and authenticated
+aidev setup                   # Install CLI agents
+aidev update                  # Update spec template to latest version
 ```
 
-## After init
+### Pipeline flags
 
 ```bash
-# Install CLI tools (Claude Code, Gemini CLI, Qwen Code)
-./pipeline/scripts/setup.sh
-
-# Authenticate each tool once
-claude      # Claude Pro account
-gemini      # Google account
-qwen        # Qwen account (qwen.ai)
-
-# Create a feature spec and run the pipeline
-cp pipeline/specs/_template.md pipeline/specs/my-feature.md
-# Edit the spec...
-./pipeline/scripts/dev-loop.sh my-feature
-
-# If the pipeline fails (e.g. Claude runs out of credits), just re-run:
-./pipeline/scripts/dev-loop.sh my-feature     # auto-resumes from last failure
-
-# To start over from scratch:
-./pipeline/scripts/dev-loop.sh my-feature --reset
+aidev run my-feature --from 2    # Start from phase 2
+aidev run my-feature --only 0    # Run single phase
+aidev run my-feature --force     # Skip complexity halts
+aidev run my-feature --reset     # Clear state and start over
 ```
 
-### Skipping Phases
+### Auto-resume
 
-Not every task needs every phase. In your spec file, there's a `## Pipeline Phases`
-section listing all five phases. Add `skip` after any phase you don't need:
+If the pipeline fails (e.g. Claude runs out of credits), just re-run:
+
+```bash
+aidev run my-feature             # Automatically resumes from last failure
+```
+
+### Skipping phases
+
+In your spec file, add `skip` after any phase you don't need:
 
 ```markdown
 ## Pipeline Phases
@@ -74,12 +62,7 @@ section listing all five phases. Add `skip` after any phase you don't need:
 - Phase 4: Documentation  skip
 ```
 
-The progress dashboard will show skipped phases with ⏭ and the pipeline
-will jump straight past them. This is especially useful for tasks that don't
-fit the standard feature-development loop — for example, skip Test Generation
-when the task *is* a test migration.
-
-## Pipeline Phases
+## Pipeline phases
 
 The pipeline produces **5 clean git commits** — one per phase:
 
@@ -93,46 +76,36 @@ The pipeline produces **5 clean git commits** — one per phase:
 
 Each review phase (0, 1, 3) is **iterative** — after each review round, you see the git diff and choose to commit or run another round.
 
-## Directory structure
+## What lives where
 
-All pipeline-internal files live under `pipeline/` to keep your repo root clean. Your own code, tests, and docs stay at root level.
+**In your repo** (committed):
 
 ```
 your-project/
-├── CLAUDE.md              ← Agent instructions (root, read by Claude)
-├── GEMINI.md              ← Agent instructions (root, read by Gemini)
-├── AGENTS.md              ← Agent instructions (root, read by Qwen)
-├── CONTEXT.md             ← Auto-generated project context (not committed)
-├── docs/                  ← Your project documentation
-├── src/                   ← Your source code
-├── tests/                 ← Your merged test suite
-└── pipeline/
-    ├── config.json        ← Pipeline configuration
-    ├── specs/             ← Feature specifications
-    ├── plans/             ← Implementation plans
-    ├── scripts/           ← Pipeline automation scripts
-    ├── reviews/
-    │   ├── spec/          ← Spec review files
-    │   ├── plan/          ← Plan review files
-    │   └── implementation/← Implementation review files
-    ├── tests/             ← Intermediate test suites (gemini/, qwen/)
-    ├── logs/              ← Pipeline run logs
-    └── signals/           ← Inter-phase coordination files
+├── aidev.config.json       ← Created by aidev init
+├── aidev/
+│   ├── specs/               ← Feature specifications
+│   └── plans/               ← Implementation plans
+├── docs/                    ← Updated by pipeline
+├── src/                     ← Your source code
+└── tests/                   ← Merged test suite
 ```
 
-## What gets generated
+**Ephemeral** (`.aidev/`, gitignored automatically):
 
-| File                          | Purpose                                             | Overwritten on update?       |
-| ----------------------------- | --------------------------------------------------- | ---------------------------- |
-| `pipeline/config.json`        | Project configuration                               | No                           |
-| `CLAUDE.md`                   | Claude Code instructions                            | No                           |
-| `GEMINI.md`                   | Gemini CLI instructions                             | No                           |
-| `AGENTS.md`                   | Qwen Code instructions                              | No                           |
-| `CONTEXT.md`                  | Auto-generated project context (read by all agents) | No (regenerated by pipeline) |
-| `pipeline/specs/_template.md` | Feature spec template                               | No                           |
-| `docs/*.md`                   | Project context documents                           | No                           |
-| `pipeline/scripts/*.sh`       | Pipeline scripts                                    | **Yes** (always updated)     |
-| `.gitignore` additions        | Log exclusion                                       | Appended only                |
+```
+.aidev/
+├── CLAUDE.md                ← Agent instructions (generated at runtime)
+├── GEMINI.md
+├── AGENTS.md
+├── CONTEXT.md               ← Project snapshot (generated at runtime)
+├── reviews/                 ← Spec, plan, and implementation reviews
+├── tests/                   ← Intermediate test suites
+├── logs/                    ← Pipeline run logs
+└── signals/                 ← State tracking for auto-resume
+```
+
+Everything the pipeline needs to run is generated fresh each time. Only your specs, plans, and actual code are committed.
 
 ## Cost
 
@@ -143,19 +116,7 @@ your-project/
 | Qwen Code         | Free                        |
 | **Total**         | **~£17/mo per developer**   |
 
-## Updating
-
-When the pipeline tool gets improvements:
-
-```bash
-npx github:dlrice/dev-pipeline update
-```
-
-This updates the scripts to the latest version while preserving your config, docs, specs, reviews, and any customisations to agent instruction files.
-
-## Platform Support
-
-The pipeline scripts require **bash** and standard Unix utilities (`find`, `grep`, `wc`, `sed`, `timeout`).
+## Platform support
 
 | Platform         | Support                                    |
 | ---------------- | ------------------------------------------ |
@@ -163,8 +124,6 @@ The pipeline scripts require **bash** and standard Unix utilities (`find`, `grep
 | Linux            | Full support                               |
 | Windows (WSL)    | Full support — run all commands inside WSL |
 | Windows (native) | Not supported — use WSL                    |
-
-**Note on `--dangerously-skip-permissions`:** The pipeline uses this flag to allow Claude Code to run without interactive permission prompts. This gives Claude unrestricted filesystem and command access during pipeline runs. Review the generated CLAUDE.md instructions to understand what Claude is permitted to do.
 
 ## Requirements
 

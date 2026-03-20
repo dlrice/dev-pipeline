@@ -79,7 +79,8 @@ extract_types() {
 extract_components() {
     if [ -d "src" ]; then
         local count
-        count=$(grep -rl "export.*function\|export.*const.*=.*(" src/ --include='*.tsx' --include='*.jsx' 2>/dev/null | wc -l | tr -d ' ' || echo "0")
+        count=$(grep -rl "export.*function\|export.*const.*=.*(" src/ --include='*.tsx' --include='*.jsx' 2>/dev/null | wc -l || true)
+        count=$((count + 0)) # Clean up newlines and spaces
         if [ "$count" -gt 0 ]; then
             echo "Found $count component files:"
             grep -rl "export.*function\|export.*const.*=.*(" src/ --include='*.tsx' --include='*.jsx' 2>/dev/null | sort | while read -r f; do
@@ -137,9 +138,10 @@ count_tests() {
     local label="$2"
     if [ -d "$dir" ]; then
         local files test_count
-        files=$(find "$dir" -name '*.test.*' -o -name '*.spec.*' 2>/dev/null | wc -l || echo "0")
-        test_count=$(grep -r "it(\|test(" "$dir" 2>/dev/null | wc -l || echo "0")
-        echo "- **$label**: $files files, ~$test_count test cases"
+        files=$(find "$dir" -name '*.test.*' -o -name '*.spec.*' 2>/dev/null | wc -l || true)
+        files=$((files + 0))
+        test_count=$(grep -r "it(\|test(" "$dir" 2>/dev/null | wc -l || true)
+        test_count=$((test_count + 0))
     fi
 }
 

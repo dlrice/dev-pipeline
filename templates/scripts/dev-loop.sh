@@ -172,12 +172,12 @@ log_to_spec() {
 
     {
         printf "### Phase %d — %s\n" "$phase" "${PHASE_NAMES[$phase]}"
-        printf "- **Status:** %s\n" "$status"
-        printf "- **Agents:** %s\n" "$agents"
-        printf "- **Duration:** %s\n" "$dur_str"
-        printf "- **Timestamp:** %s\n" "$ts"
+        printf -- "- **Status:** %s\n" "$status"
+        printf -- "- **Agents:** %s\n" "$agents"
+        printf -- "- **Duration:** %s\n" "$dur_str"
+        printf -- "- **Timestamp:** %s\n" "$ts"
         if [ -n "$summary" ]; then
-            printf "- **Summary:** %s\n" "$summary"
+            printf -- "- **Summary:** %s\n" "$summary"
         fi
         printf "\n"
     } >> "$SPEC_FILE"
@@ -258,34 +258,32 @@ mkdir -p .aidev/logs .aidev/reviews/spec .aidev/reviews/plan \
 init_state
 eval "$(read_state)"
 
-# Auto-resume: if no explicit --from was given and we have completed phases,
-# resume from the phase after the last completed one (or the failed one).
-if [ "$FROM_PHASE" -eq 0 ] && [ "$ONLY_PHASE" -lt 0 ] && [ -n "$COMPLETED_PHASES" ]; then
-    # Find the highest completed phase
-    HIGHEST_COMPLETED=-1
-    for p in $COMPLETED_PHASES; do
-        if [ "$p" -gt "$HIGHEST_COMPLETED" ]; then
-            HIGHEST_COMPLETED=$p
-        fi
-    done
-
+# Auto-resume: if no explicit --from was given
+if [ "$FROM_PHASE" -eq 0 ] && [ "$ONLY_PHASE" -lt 0 ]; then
     if [ "$FAILED_PHASE" -ge 0 ]; then
         # Resume from the failed phase
         FROM_PHASE=$FAILED_PHASE
         echo ""
         echo "  ⟳  Auto-resuming from Phase $FROM_PHASE (${PHASE_NAMES[$FROM_PHASE]}) — last failure point"
-    elif [ "$HIGHEST_COMPLETED" -lt 4 ]; then
-        # Resume from next phase after highest completed
-        FROM_PHASE=$((HIGHEST_COMPLETED + 1))
-        echo ""
-        echo "  ⟳  Auto-resuming from Phase $FROM_PHASE (${PHASE_NAMES[$FROM_PHASE]}) — phases 0–${HIGHEST_COMPLETED} already done"
-    else
-        echo ""
-        echo "  ✓  All phases already completed for $FEATURE."
-        echo "     Use --reset to start over, or --from N to re-run a specific phase."
-        exit 0
+    elif [ -n "$COMPLETED_PHASES" ]; then
+        # Find the FIRST phase (0-4) that is NOT in COMPLETED_PHASES
+        for p in 0 1 2 3 4; do
+            if ! echo "$COMPLETED_PHASES" | grep -qw "$p"; then
+                FROM_PHASE=$p
+                break
+            fi
+        done
+        
+        if [ -n "$FROM_PHASE" ]; then
+            echo ""
+            echo "  ⟳  Auto-resuming from Phase $FROM_PHASE (${PHASE_NAMES[$FROM_PHASE]})"
+        else
+            echo ""
+            echo "  ✓  All phases already completed for $FEATURE."
+            echo "     Use --reset to start over, or --from N to re-run a specific phase."
+            exit 0
+        fi
     fi
-    echo "     Use --reset to start from scratch, or --from N to override."
 fi
 
 # ─── Parse skipped phases from spec ─────────────────────────────
@@ -304,7 +302,7 @@ if [ -f "$SPEC_FILE" ]; then
             break
         fi
         if [[ "$in_section" == "true" ]] && echo "$line" | grep -qi "skip"; then
-            phase_num=$(echo "$line" | grep -o 'Phase [0-9]' | grep -o '[0-9]')
+            phase_num=$(echo "$line" | grep -o 'Phase [0-9]' | grep -o '[0-9]' || true)
             if [ -n "$phase_num" ]; then
                 SKIP_PHASES="$SKIP_PHASES $phase_num"
             fi
@@ -567,7 +565,13 @@ Do NOT modify any other files. Do NOT write implementation code.
 " --dangerously-skip-permissions 2>&1 | tee /tmp/claude-spec-merge-r${REVIEW_ROUND}.out || MERGE_EXIT=$?
 
         if [ $MERGE_EXIT -ne 0 ]; then
-            echo "  ⚠ Claude merge exited with code $MERGE_EXIT"
+            echo ""
+            echo "  ✗ Claude spec merge failed (exit code $MERGE_EXIT)."
+            echo "    You have likely hit a token limit or API error."
+            echo "    Re-run the same command to auto-resume from this phase later."
+            mark_phase_failed 0
+            log_to_spec 0 "✗ failed" "Claude Code" $((SECONDS - PHASE_START)) "Spec merge failed (exit $MERGE_EXIT)"
+            exit 1
         fi
 
         echo ""

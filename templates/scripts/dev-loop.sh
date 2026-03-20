@@ -248,7 +248,7 @@ Generate a decomposition to specs/${FEATURE}-decomposition.md. Stop.
 If not too complex: critique the spec for ambiguous user flows, boundary
 conditions, race conditions, and cases where two developers would implement
 differently. Save to ${QWEN_OUT}.
-" > /tmp/qwen-phase0.out 2>&1 &
+" -y > /tmp/qwen-phase0.out 2>&1 &
     QWEN_PID=$!
 
     wait $GEMINI_PID || GEMINI_EXIT=$?
@@ -308,7 +308,7 @@ Write adversarial tests for this feature. Save to tests/qwen/.
 Focus: error states, empty/null data, boundary values, rapid interaction,
 network failures, malformed data, concurrent state changes.
 After writing, run them once to verify they compile.
-" &
+" -y &
     QWEN_PID=$!
 
     wait $GEMINI_PID || GEMINI_EXIT=$?
@@ -432,7 +432,7 @@ Read ${PLAN_FILE}, ${SPEC_FILE}, and tests/merged/.
 Review for: over-engineering, missing error handling paths, unnecessary
 state complexity, test scenarios the plan does not address.
 Save to ${PLAN_QWEN}.
-" &
+" -y &
     QWEN_PID=$!
 
     wait $GEMINI_PID || GEMINI_EXIT=$?
@@ -623,7 +623,7 @@ accessibility issues (missing ARIA, keyboard traps).
 Write additional tests to tests/adversarial/.
 Save review summary to ${REVIEW_FILE}.
 Do NOT modify any files in src/.
-" 2>&1 | tee /tmp/qwen-phase4.out || QWEN_EXIT=$?
+" -y 2>&1 | tee /tmp/qwen-phase4.out || QWEN_EXIT=$?
 
     if [ $QWEN_EXIT -ne 0 ]; then
         echo "  ⚠ Qwen adversarial review exited with code $QWEN_EXIT"

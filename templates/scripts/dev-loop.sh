@@ -19,10 +19,10 @@ set -euo pipefail
 # read this one file instead of scanning multiple doc files separately.
 #
 # Usage:
-#   ./scripts/dev-loop.sh <feature-name>              # Full pipeline
-#   ./scripts/dev-loop.sh <feature-name> --from 2     # Start from phase 2
-#   ./scripts/dev-loop.sh <feature-name> --only 0     # Run single phase
-#   ./scripts/dev-loop.sh <feature-name> --force       # Skip complexity halts
+#   ./pipeline/scripts/dev-loop.sh <feature-name>              # Full pipeline
+#   ./pipeline/scripts/dev-loop.sh <feature-name> --from 2     # Start from phase 2
+#   ./pipeline/scripts/dev-loop.sh <feature-name> --only 0     # Run single phase
+#   ./pipeline/scripts/dev-loop.sh <feature-name> --force       # Skip complexity halts
 # ─────────────────────────────────────────────────────────────────
 
 # ─── Configuration ───────────────────────────────────────────────
@@ -30,7 +30,7 @@ set -euo pipefail
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-3600}"  # 60 minutes default
 
 # ─── Parse arguments ─────────────────────────────────────────────
-FEATURE="${1:?Usage: ./scripts/dev-loop.sh <feature-name> [--from N] [--only N] [--force]}"
+FEATURE="${1:?Usage: ./pipeline/scripts/dev-loop.sh <feature-name> [--from N] [--only N] [--force]}"
 shift
 
 FROM_PHASE=0
@@ -46,15 +46,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-SPEC_FILE="specs/${FEATURE}.md"
-PLAN_FILE="plans/${FEATURE}-plan.md"
-PLAN_DONE="plans/${FEATURE}-plan.done"
-PLAN_GEMINI="reviews/plan-reviews/${FEATURE}-gemini.md"
-PLAN_QWEN="reviews/plan-reviews/${FEATURE}-qwen.md"
-REVIEW_FILE="reviews/adversarial/${FEATURE}-review.md"
-IMPL_DONE=".pipeline/${FEATURE}-impl.done"
+SPEC_FILE="pipeline/specs/${FEATURE}.md"
+PLAN_FILE="pipeline/plans/${FEATURE}-plan.md"
+PLAN_DONE="pipeline/signals/${FEATURE}-plan.done"
+PLAN_GEMINI="pipeline/reviews/plan-reviews/${FEATURE}-gemini.md"
+PLAN_QWEN="pipeline/reviews/plan-reviews/${FEATURE}-qwen.md"
+REVIEW_FILE="pipeline/reviews/adversarial/${FEATURE}-review.md"
+IMPL_DONE="pipeline/signals/${FEATURE}-impl.done"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-LOG_FILE="logs/${FEATURE}-${TIMESTAMP}.log"
+LOG_FILE="pipeline/logs/${FEATURE}-${TIMESTAMP}.log"
 
 # Session IDs for Claude --continue
 SESSION_A_ID=""
@@ -63,12 +63,13 @@ SESSION_B_ID=""
 # ─── Validation ──────────────────────────────────────────────────
 if [ ! -f "$SPEC_FILE" ]; then
     echo "Error: spec file $SPEC_FILE not found"
-    echo "Create one with: cp specs/_template.md $SPEC_FILE"
+    echo "Create one with: cp pipeline/specs/_template.md $SPEC_FILE"
     exit 1
 fi
 
-mkdir -p logs reviews/spec-critiques reviews/plan-reviews reviews/adversarial \
-         tests/gemini tests/qwen tests/adversarial tests/merged plans .pipeline
+mkdir -p pipeline/logs pipeline/reviews/spec-critiques pipeline/reviews/plan-reviews \
+         pipeline/reviews/adversarial pipeline/tests/gemini pipeline/tests/qwen \
+         pipeline/tests/adversarial pipeline/plans pipeline/signals tests
 
 # ─── Read complexity thresholds from config ──────────────────────
 MAX_SCREENS=4
@@ -78,9 +79,9 @@ MAX_MODIFIED_FILES=10
 MAX_CODE_LINES=500
 MAX_TESTS=50
 
-if [ -f "pipeline.config.json" ] && command -v node &> /dev/null; then
+if [ -f "pipeline/config.json" ] && command -v node &> /dev/null; then
     eval "$(node -e "
-const c = require('./pipeline.config.json').complexity || {};
+const c = require('./pipeline/config.json').complexity || {};
 console.log('MAX_SCREENS=' + (c.maxScreens || 4));
 console.log('MAX_COMPONENTS=' + (c.maxNewComponents || 5));
 console.log('MAX_API_ENDPOINTS=' + (c.maxNewApiEndpoints || 3));
@@ -110,8 +111,8 @@ echo "Checkpoint: $CHECKPOINT_SHA (use 'git reset --hard $CHECKPOINT_SHA' to rol
 # ─── Generate fresh CONTEXT.md ───────────────────────────────────
 echo ""
 echo "Generating fresh CONTEXT.md for this pipeline run..."
-if [ -f "./scripts/generate-context.sh" ]; then
-    ./scripts/generate-context.sh
+if [ -f "./pipeline/scripts/generate-context.sh" ]; then
+    ./pipeline/scripts/generate-context.sh
 fi
 
 # ─── Agent runner with timeout ───────────────────────────────────
@@ -149,12 +150,12 @@ check_complexity() {
         echo "========================================================"
         echo ""
         echo "  Detected in: $phase_name"
-        echo "  Decomposition: specs/${FEATURE}-decomposition.md"
+        echo "  Decomposition: pipeline/specs/${FEATURE}-decomposition.md"
         echo ""
         echo "  To work on sub-tasks instead:"
         echo "    1. Review the decomposition file"
         echo "    2. Create specs for each sub-task"
-        echo "    3. Run: ./scripts/dev-loop.sh <sub-task-name>"
+        echo "    3. Run: ./pipeline/scripts/dev-loop.sh <sub-task-name>"
         echo ""
 
         if [ "$FORCE" = true ]; then
@@ -162,7 +163,7 @@ check_complexity() {
             echo ""
         else
             echo "  To proceed anyway (not recommended):"
-            echo "    ./scripts/dev-loop.sh ${FEATURE} --force"
+            echo "    ./pipeline/scripts/dev-loop.sh ${FEATURE} --force"
             echo ""
             exit 0
         fi
@@ -217,13 +218,13 @@ Read the feature spec at ${SPEC_FILE}.
 Read GEMINI.md for your role and instructions.
 
 FIRST, assess whether this feature is too complex for a single pipeline run.
-Read pipeline.config.json for complexity thresholds. A feature is too complex
+Read pipeline/config.json for complexity thresholds. A feature is too complex
 if it exceeds any of: ${MAX_SCREENS} screens, ${MAX_COMPONENTS} new components,
 ${MAX_API_ENDPOINTS} API endpoints, ${MAX_MODIFIED_FILES} modified files,
 ${MAX_CODE_LINES} lines of new code, or contains independently-shippable parts.
 
 If too complex: output COMPLEXITY_LIMIT: This feature should be split.
-Generate a decomposition to specs/${FEATURE}-decomposition.md. Stop.
+Generate a decomposition to pipeline/specs/${FEATURE}-decomposition.md. Stop.
 
 If not too complex: critique the spec for missing error states, unspecified
 technical constraints, accessibility gaps, conflicts with existing architecture,
@@ -237,13 +238,13 @@ Read the feature spec at ${SPEC_FILE}.
 Read AGENTS.md for your role and instructions.
 
 FIRST, assess whether this feature is too complex for a single pipeline run.
-Read pipeline.config.json for complexity thresholds. A feature is too complex
+Read pipeline/config.json for complexity thresholds. A feature is too complex
 if it exceeds any of: ${MAX_SCREENS} screens, ${MAX_COMPONENTS} new components,
 ${MAX_API_ENDPOINTS} API endpoints, ${MAX_MODIFIED_FILES} modified files,
 ${MAX_CODE_LINES} lines of new code, or contains independently-shippable parts.
 
 If too complex: output COMPLEXITY_LIMIT: This feature should be split.
-Generate a decomposition to specs/${FEATURE}-decomposition.md. Stop.
+Generate a decomposition to pipeline/specs/${FEATURE}-decomposition.md. Stop.
 
 If not too complex: critique the spec for ambiguous user flows, boundary
 conditions, race conditions, and cases where two developers would implement
@@ -293,7 +294,7 @@ Read CONTEXT.md for full project state.
 Read the feature spec at ${SPEC_FILE}.
 Read GEMINI.md for your role and instructions.
 
-Write comprehensive tests for this feature. Save to tests/gemini/.
+Write comprehensive tests for this feature. Save to pipeline/tests/gemini/.
 Focus: happy paths, component rendering, accessibility, responsive, state transitions.
 After writing, run them once to verify they compile (failures expected).
 " --yolo &
@@ -304,7 +305,7 @@ Read CONTEXT.md for full project state.
 Read the feature spec at ${SPEC_FILE}.
 Read AGENTS.md for your role and instructions.
 
-Write adversarial tests for this feature. Save to tests/qwen/.
+Write adversarial tests for this feature. Save to pipeline/tests/qwen/.
 Focus: error states, empty/null data, boundary values, rapid interaction,
 network failures, malformed data, concurrent state changes.
 After writing, run them once to verify they compile.
@@ -321,7 +322,7 @@ After writing, run them once to verify they compile.
         echo "  ⚠ Qwen exited with code $QWEN_EXIT"
     fi
 
-    echo "  Phase 1 complete. Tests in tests/gemini/ and tests/qwen/."
+    echo "  Phase 1 complete. Tests in pipeline/tests/gemini/ and pipeline/tests/qwen/."
 fi
 
 
@@ -358,10 +359,10 @@ You have TWO tasks in this session.
 TASK 1: Merge test suites
 ───────────────────────────────────────────────────
 Two independently-generated test suites exist:
-- tests/gemini/ — breadth tests (happy paths, accessibility)
-- tests/qwen/ — adversarial tests (failures, edge cases)
+- pipeline/tests/gemini/ — breadth tests (happy paths, accessibility)
+- pipeline/tests/qwen/ — adversarial tests (failures, edge cases)
 
-Merge into tests/merged/:
+Merge into tests/:
 1. Read every test file in both directories
 2. Deduplicate (keep the more thorough version of overlapping tests)
 3. Resolve naming conflicts
@@ -375,9 +376,9 @@ Report: total test count and brief coverage summary.
 TASK 2: Generate implementation plan
 ───────────────────────────────────────────────────
 Read the feature spec at ${SPEC_FILE}.
-Read the merged test suite in tests/merged/.
+Read the merged test suite in tests/.
 
-FIRST assess complexity using these thresholds from pipeline.config.json:
+FIRST assess complexity using these thresholds from pipeline/config.json:
 - Max tests: ${MAX_TESTS}
 - Max new files: 8
 - Max new code lines: ${MAX_CODE_LINES}
@@ -385,7 +386,7 @@ FIRST assess complexity using these thresholds from pipeline.config.json:
 
 If the feature exceeds these limits:
   Output COMPLEXITY_LIMIT: This feature should be split.
-  Generate decomposition to specs/${FEATURE}-decomposition.md. Stop entirely.
+  Generate decomposition to pipeline/specs/${FEATURE}-decomposition.md. Stop entirely.
 
 Otherwise, generate an implementation plan to ${PLAN_FILE} covering:
 - Files to create or modify (one-line description each)
@@ -427,7 +428,7 @@ Save to ${PLAN_GEMINI}.
 
     timeout "$AGENT_TIMEOUT" qwen -p "
 Read CONTEXT.md for full project state. Read AGENTS.md for your role and instructions.
-Read ${PLAN_FILE}, ${SPEC_FILE}, and tests/merged/.
+Read ${PLAN_FILE}, ${SPEC_FILE}, and tests/.
 
 Review for: over-engineering, missing error handling paths, unnecessary
 state complexity, test scenarios the plan does not address.
@@ -507,13 +508,13 @@ Implement the feature
 ───────────────────────────────────────────────────
 Read the feature spec at ${SPEC_FILE}.
 Read the implementation plan at ${PLAN_FILE}.
-Read the merged test suite in tests/merged/.
+Read the merged test suite in tests/.
 
 Before implementing: if at any point you find the scope exceeds
 single-session capacity or you are making quality compromises
 (skipping error handling, writing placeholder code, losing track of
 state across files), STOP. Output COMPLEXITY_LIMIT and save a partial
-decomposition to specs/${FEATURE}-decomposition.md showing what is
+decomposition to pipeline/specs/${FEATURE}-decomposition.md showing what is
 complete and what remains.
 
 Otherwise: implement following the plan exactly.
@@ -565,7 +566,7 @@ Report: total tests passing, files created/modified.
     fi
 
     # Lint gate
-    LINT_CMD=$(node -e "const c=require('./pipeline.config.json');console.log(c.commands?.lint||'')" 2>/dev/null || true)
+    LINT_CMD=$(node -e "const c=require('./pipeline/config.json');console.log(c.commands?.lint||'')" 2>/dev/null || true)
     if [ -n "$LINT_CMD" ]; then
         if ! eval "$LINT_CMD" 2>&1; then
             echo "  ✗ LINT FAILED"
@@ -577,7 +578,7 @@ Report: total tests passing, files created/modified.
 
     # Type check gate
     if [ -f "tsconfig.json" ]; then
-        TYPECHECK_CMD=$(node -e "const c=require('./pipeline.config.json');console.log(c.commands?.typeCheck||'npx tsc --noEmit')" 2>/dev/null || echo "npx tsc --noEmit")
+        TYPECHECK_CMD=$(node -e "const c=require('./pipeline/config.json');console.log(c.commands?.typeCheck||'npx tsc --noEmit')" 2>/dev/null || echo "npx tsc --noEmit")
         if ! eval "$TYPECHECK_CMD" 2>&1; then
             echo "  ✗ TYPE CHECK FAILED"
             QUALITY_PASS=false
@@ -614,13 +615,13 @@ Read CONTEXT.md for full project state.
 Read AGENTS.md for your role and instructions.
 Read ${SPEC_FILE} and ${PLAN_FILE}.
 Read every file in src/ that was created or modified for this feature.
-Read every test in tests/merged/.
+Read every test in tests/.
 
 Find: spec compliance issues, security concerns (XSS, data exposure),
 robustness gaps (missing error handling, race conditions, cleanup),
 accessibility issues (missing ARIA, keyboard traps).
 
-Write additional tests to tests/adversarial/.
+Write additional tests to pipeline/tests/adversarial/.
 Save review summary to ${REVIEW_FILE}.
 Do NOT modify any files in src/.
 " -y 2>&1 | tee /tmp/qwen-phase4.out || QWEN_EXIT=$?
@@ -635,9 +636,9 @@ Do NOT modify any files in src/.
 
     FIX_PROMPT="
 Read the adversarial review at ${REVIEW_FILE}.
-Read the new adversarial tests in tests/adversarial/.
+Read the new adversarial tests in pipeline/tests/adversarial/.
 
-Run ALL tests (tests/merged/ and tests/adversarial/).
+Run ALL tests (tests/ and pipeline/tests/adversarial/).
 If any new tests fail, fix the implementation in src/.
 NEVER modify or delete any tests.
 
@@ -680,7 +681,7 @@ if should_run 5; then
     run_agent "Gemini documentation" "$AGENT_TIMEOUT" \
         gemini -p "
 Read CONTEXT.md for full project state. Read GEMINI.md for your role and instructions.
-Read plans/${FEATURE}-plan.md. Scan src/ for changes.
+Read pipeline/plans/${FEATURE}-plan.md. Scan src/ for changes.
 
 Update these doc files with any changes from this feature:
 - docs/ARCHITECTURE.md — new directories, components, data flows
@@ -711,7 +712,7 @@ if should_run 6; then
 
     echo "[6/6] Regenerating CONTEXT.md with final state..."
 
-    ./scripts/generate-context.sh
+    ./pipeline/scripts/generate-context.sh
 
     echo "  Phase 6 complete."
 fi
@@ -733,10 +734,10 @@ echo "════════════════════════�
 echo ""
 echo "  Artifacts:"
 echo "    Spec:              $SPEC_FILE"
-echo "    Spec critiques:    reviews/spec-critiques/"
-echo "    Tests:             tests/merged/ + tests/adversarial/"
+echo "    Spec critiques:    pipeline/reviews/spec-critiques/"
+echo "    Tests:             tests/ + pipeline/tests/adversarial/"
 echo "    Plan:              $PLAN_FILE"
-echo "    Plan reviews:      reviews/plan-reviews/"
+echo "    Plan reviews:      pipeline/reviews/plan-reviews/"
 echo "    Adversarial review: $REVIEW_FILE"
 echo "    Context:           CONTEXT.md"
 echo "    Log:               $LOG_FILE"

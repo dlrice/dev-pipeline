@@ -199,20 +199,20 @@ echo ""
 echo "Ensuring directory structure..."
 
 DIRS=(
-    "specs"
-    "plans"
-    "reviews/spec-critiques"
-    "reviews/plan-reviews"
-    "reviews/adversarial"
-    "tests/gemini"
-    "tests/qwen"
-    "tests/adversarial"
-    "tests/merged"
+    "pipeline/specs"
+    "pipeline/plans"
+    "pipeline/reviews/spec-critiques"
+    "pipeline/reviews/plan-reviews"
+    "pipeline/reviews/adversarial"
+    "pipeline/tests/gemini"
+    "pipeline/tests/qwen"
+    "pipeline/tests/adversarial"
+    "pipeline/scripts"
+    "pipeline/logs"
+    "pipeline/signals"
     "docs"
-    "scripts"
-    "logs"
+    "tests"
     "src"
-    ".pipeline"
 )
 
 for dir in "${DIRS[@]}"; do
@@ -224,11 +224,11 @@ echo -e "${GREEN}✓${NC} Directory structure ready"
 echo "Checking stub files..."
 
 STUB_FILES=(
-    "specs/_template.md"
+    "pipeline/specs/_template.md"
     "CLAUDE.md"
     "GEMINI.md"
     "AGENTS.md"
-    "pipeline.config.json"
+    "pipeline/config.json"
     "docs/ARCHITECTURE.md"
     "docs/CONVENTIONS.md"
     "docs/DATA-MODEL.md"
@@ -263,7 +263,7 @@ if [ "${1:-}" = "--bootstrap" ]; then
         gemini -p "Read every file in src/ and tests/. Generate docs/CONVENTIONS.md by inferring conventions actually in use." --yolo || true
 
         echo "  Running Claude Code to generate DEPENDENCIES.md..."
-        claude -p "Read package.json. Generate docs/DEPENDENCIES.md listing every non-trivial dependency with what it does and where it is used." --dangerously-skip-permissions || true
+        claude -p "Read package.json and pipeline/config.json. Generate docs/DEPENDENCIES.md listing every non-trivial dependency with what it does and where it is used." --dangerously-skip-permissions || true
 
         echo "  Running Claude Code to generate DECISIONS.md skeleton..."
         claude -p "Scan the codebase and infer architectural decisions. Generate docs/DECISIONS.md with the decision and alternatives. Leave Reasoning fields for the developer to fill in." --dangerously-skip-permissions || true
@@ -318,7 +318,7 @@ else
 fi
 
 echo "  To start the pipeline on a feature:"
-echo "    cp specs/_template.md specs/my-feature.md"
-echo "    # Edit specs/my-feature.md"
-echo -e "    ${GREEN}./scripts/dev-loop.sh my-feature${NC}"
+echo "    cp pipeline/specs/_template.md pipeline/specs/my-feature.md"
+echo "    # Edit pipeline/specs/my-feature.md"
+echo -e "    ${GREEN}./pipeline/scripts/dev-loop.sh my-feature${NC}"
 echo ""

@@ -8,7 +8,7 @@ An automated development pipeline that orchestrates three cloud-based LLM agents
 
 ```bash
 cd your-project
-npx github:YOUR-USERNAME/dev-pipeline init
+npx github:dlrice/dev-pipeline init
 ```
 
 The `init` command will:
@@ -21,20 +21,20 @@ The `init` command will:
 **Private repos:** If your repo is private, ensure the user has `gh auth login` configured or use a personal access token. Install with:
 
 ```bash
-npx github:YOUR-USERNAME/dev-pipeline#main init
+npx github:dlrice/dev-pipeline#main init
 ```
 
 ## Commands
 
 ```bash
 # Onboard the pipeline into a new repo
-npx github:YOUR-USERNAME/dev-pipeline init
+npx github:dlrice/dev-pipeline init
 
 # Update pipeline scripts in an existing repo (preserves config and docs)
-npx github:YOUR-USERNAME/dev-pipeline update
+npx github:dlrice/dev-pipeline update
 
 # Check that all tools are installed
-npx github:YOUR-USERNAME/dev-pipeline doctor
+npx github:dlrice/dev-pipeline doctor
 ```
 
 ## After init
@@ -94,7 +94,7 @@ cp specs/_template.md specs/my-feature.md
 When the pipeline tool gets improvements:
 
 ```bash
-npx github:YOUR-USERNAME/dev-pipeline update
+npx github:dlrice/dev-pipeline update
 ```
 
 This updates the scripts to the latest version while preserving your config, docs, specs, reviews, and any customisations to agent instruction files.

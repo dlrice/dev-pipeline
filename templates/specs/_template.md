@@ -53,16 +53,15 @@ minimum viewport width, etc.]
 ## Pipeline Phases
 [All phases are enabled by default. To skip a phase, add `skip` after the
 dash. This is useful when a phase doesn't fit your task — for example,
-skip "Test Generation" for a test-migration task, or skip "Adversarial
-Review" for a documentation-only change.]
+skip "Test Generation" for a test-migration task, or skip "Spec Review"
+for a well-established spec.]
 
-- Phase 0: Spec Hardening
-- Phase 1: Test Generation
-- Phase 2: Plan Generation
+- Phase 0: Spec Review
+- Phase 1: Planning
+- Phase 2: Test Generation
 - Phase 3: Implementation
-- Phase 4: Adversarial Review
-- Phase 5: Documentation
-- Phase 6: Context Regeneration
+- Phase 4: Documentation
 
-<!-- Pipeline Log: auto-appended by dev-loop.sh as phases complete.
-     Shows agents used, duration, and status for each phase run. -->
+## Review Log
+<!-- Auto-populated by the pipeline as reviewers analyze this spec and plan.
+     Each round records what was flagged, what was changed, and what was declined. -->

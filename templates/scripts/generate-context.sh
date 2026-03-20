@@ -175,7 +175,7 @@ feature_status() {
                 [ -d "tests" ] && [ -n "$(ls tests/ 2>/dev/null)" ] && has_tests="✓"
                 [ -f "pipeline/plans/${name}-plan.md" ] && has_plan="✓"
                 git log --oneline 2>/dev/null | grep -q "feat(${name})" && has_impl="✓"
-                [ -f "pipeline/reviews/adversarial/${name}-review.md" ] && has_review="✓"
+                [ -f "pipeline/reviews/implementation/${name}-gemini.md" ] || [ -f "pipeline/reviews/implementation/${name}-qwen.md" ] && has_review="✓"
                 echo "| $name | $has_tests | $has_plan | $has_impl | $has_review |"
             done
         else
@@ -304,7 +304,6 @@ HEADER
     echo "## Test Coverage Map"
     echo ""
     count_tests "tests" "Merged tests"
-    count_tests "pipeline/tests/adversarial" "Adversarial tests"
     count_tests "pipeline/tests/gemini" "Gemini breadth tests"
     count_tests "pipeline/tests/qwen" "Qwen adversarial tests"
     if [ ! -d "tests" ] || [ -z "$(find tests/ -name '*.test.*' -o -name '*.spec.*' 2>/dev/null)" ]; then

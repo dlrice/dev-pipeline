@@ -2,7 +2,7 @@
 
 An automated development pipeline that orchestrates three cloud-based LLM agents to produce high-quality code from markdown specifications.
 
-**Claude Code** (paid, $20/mo) handles implementation and planning. **Gemini CLI** and **Qwen Code** (both free) handle spec review, test generation, adversarial review, and documentation.
+**Claude Code** (paid, $20/mo) handles implementation and planning. **Gemini CLI** and **Qwen Code** (both free) handle spec review, test generation, implementation review, and documentation.
 
 ## Install into any repo
 
@@ -63,17 +63,15 @@ cp pipeline/specs/_template.md pipeline/specs/my-feature.md
 ### Skipping Phases
 
 Not every task needs every phase. In your spec file, there's a `## Pipeline Phases`
-section listing all seven phases. Add `skip` after any phase you don't need:
+section listing all five phases. Add `skip` after any phase you don't need:
 
 ```markdown
 ## Pipeline Phases
-- Phase 0: Spec Hardening
-- Phase 1: Test Generation  skip
-- Phase 2: Plan Generation
+- Phase 0: Spec Review
+- Phase 1: Planning  skip
+- Phase 2: Test Generation
 - Phase 3: Implementation
-- Phase 4: Adversarial Review  skip
-- Phase 5: Documentation
-- Phase 6: Context Regeneration
+- Phase 4: Documentation  skip
 ```
 
 The progress dashboard will show skipped phases with ⏭ and the pipeline
@@ -83,15 +81,17 @@ when the task *is* a test migration.
 
 ## Pipeline Phases
 
-| Phase                  | Agent(s)                        | Purpose                                    |
-| ---------------------- | ------------------------------- | ------------------------------------------ |
-| 0 — Spec Hardening     | Gemini + Qwen                   | Find gaps and ambiguity in your spec       |
-| 1 — Test Generation    | Gemini + Qwen                   | Write tests from different angles          |
-| 2 — Plan Generation    | Claude → Gemini + Qwen → Claude | Merge tests, create plan, review, revise   |
-| 3 — Implementation     | Claude                          | Write code to pass all tests               |
-| 4 — Adversarial Review | Qwen → Claude                   | Find remaining gaps, write more tests, fix |
-| 5 — Documentation      | Gemini                          | Update project docs                        |
-| 6 — Context Regen      | Shell script (no LLM)           | Regenerate CONTEXT.md from docs + codebase |
+The pipeline produces **5 clean git commits** — one per phase:
+
+| Phase               | Agent(s)                        | Commit prefix | Purpose                                       |
+| ------------------- | ------------------------------- | ------------- | --------------------------------------------- |
+| 0 — Spec Review     | Gemini + Qwen → Claude          | `spec()`      | Iterative review and refinement of the spec   |
+| 1 — Planning        | Claude → Gemini + Qwen → Claude | `plan()`      | Generate plan, review, revise until ready      |
+| 2 — Test Generation | Gemini + Qwen → Claude          | `test()`      | Write and merge test suites                    |
+| 3 — Implementation  | Claude → Gemini + Qwen → Claude | `feat()`      | Implement, review, fix                         |
+| 4 — Documentation   | Gemini                          | `docs()`      | Update project docs                            |
+
+Each review phase (0, 1, 3) is **iterative** — after each review round, you see the git diff and choose to commit or run another round.
 
 ## Directory structure
 
@@ -102,7 +102,7 @@ your-project/
 ├── CLAUDE.md              ← Agent instructions (root, read by Claude)
 ├── GEMINI.md              ← Agent instructions (root, read by Gemini)
 ├── AGENTS.md              ← Agent instructions (root, read by Qwen)
-├── CONTEXT.md             ← Auto-generated project context
+├── CONTEXT.md             ← Auto-generated project context (not committed)
 ├── docs/                  ← Your project documentation
 ├── src/                   ← Your source code
 ├── tests/                 ← Your merged test suite
@@ -111,8 +111,11 @@ your-project/
     ├── specs/             ← Feature specifications
     ├── plans/             ← Implementation plans
     ├── scripts/           ← Pipeline automation scripts
-    ├── reviews/           ← Spec critiques, plan reviews, adversarial reviews
-    ├── tests/             ← Intermediate test suites (gemini/, qwen/, adversarial/)
+    ├── reviews/
+    │   ├── spec/          ← Spec review files
+    │   ├── plan/          ← Plan review files
+    │   └── implementation/← Implementation review files
+    ├── tests/             ← Intermediate test suites (gemini/, qwen/)
     ├── logs/              ← Pipeline run logs
     └── signals/           ← Inter-phase coordination files
 ```

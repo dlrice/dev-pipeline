@@ -273,7 +273,7 @@ if [ "$FROM_PHASE" -eq 0 ] && [ "$ONLY_PHASE" -lt 0 ]; then
                 break
             fi
         done
-        
+
         if [ -n "$FROM_PHASE" ]; then
             echo ""
             echo "  ⟳  Auto-resuming from Phase $FROM_PHASE (${PHASE_NAMES[$FROM_PHASE]})"
@@ -340,6 +340,27 @@ console.log('MAX_TESTS=' + (c.maxTests || 50));
 " 2>/dev/null)" || true
 fi
 
+# ─── Read model configuration from config ────────────────────────
+CLAUDE_MODEL="sonnet"
+GEMINI_MODEL="gemini-2.5-pro"
+QWEN_MODEL="qwen3-coder-plus"
+
+if [ -f "aidev.config.json" ] && command -v node &> /dev/null; then
+    eval "$(node -e "
+const m = require('./aidev.config.json').models || {};
+console.log('CLAUDE_MODEL=' + (m.claude || 'sonnet'));
+console.log('GEMINI_MODEL=' + (m.gemini || 'gemini-2.5-pro'));
+console.log('QWEN_MODEL=' + (m.qwen || 'qwen3-coder-plus'));
+" 2>/dev/null)" || true
+fi
+
+echo "  Models: Claude=$CLAUDE_MODEL, Gemini=$GEMINI_MODEL, Qwen=$QWEN_MODEL"
+
+# Build command prefixes with model flags
+CLAUDE_CMD="claude --model $CLAUDE_MODEL"
+GEMINI_CMD="gemini --model $GEMINI_MODEL"
+QWEN_CMD="qwen --model $QWEN_MODEL"
+
 # ─── Logging ─────────────────────────────────────────────────────
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "Pipeline started: $(date)"
@@ -361,7 +382,7 @@ echo "Checkpoint: $CHECKPOINT_SHA (use 'git reset --hard $CHECKPOINT_SHA' to rol
 echo ""
 echo "Generating fresh CONTEXT.md for this pipeline run..."
 if [ -f "$AIDEV_SCRIPTS_DIR/generate-context.sh" ]; then
-    $AIDEV_SCRIPTS_DIR/generate-context.sh
+    bash "$AIDEV_SCRIPTS_DIR/generate-context.sh"
 fi
 
 # ─── Agent runner with timeout ───────────────────────────────────
@@ -472,12 +493,15 @@ if should_run 0; then
         GEMINI_OUT=".aidev/reviews/spec/${FEATURE}-gemini-r${REVIEW_ROUND}.md"
         QWEN_OUT=".aidev/reviews/spec/${FEATURE}-qwen-r${REVIEW_ROUND}.md"
 
-        echo "  Running Gemini + Qwen spec reviews in parallel..."
+        if [ -s "$GEMINI_OUT" ] && [ -s "$QWEN_OUT" ]; then
+            echo "  ✓ Found existing reviews for round $REVIEW_ROUND. Skipping generation..."
+        else
+            echo "  Running Gemini + Qwen spec reviews in parallel..."
 
-        GEMINI_EXIT=0
-        QWEN_EXIT=0
+            GEMINI_EXIT=0
+            QWEN_EXIT=0
 
-        timeout "$AGENT_TIMEOUT" gemini -p "
+            timeout "$AGENT_TIMEOUT" $GEMINI_CMD -p "
 Read .aidev/CONTEXT.md for full project state.
 Read the feature spec at ${SPEC_FILE}.
 Read .aidev/GEMINI.md for your role and instructions.
@@ -495,9 +519,9 @@ If not too complex: critique the spec for missing error states, unspecified
 technical constraints, accessibility gaps, conflicts with existing architecture,
 and ambiguous wording. Save to ${GEMINI_OUT}.
 " --yolo > /tmp/gemini-phase0.out 2>&1 &
-        GEMINI_PID=$!
+            GEMINI_PID=$!
 
-        timeout "$AGENT_TIMEOUT" qwen -p "
+            timeout "$AGENT_TIMEOUT" $QWEN_CMD -p "
 Read .aidev/CONTEXT.md for full project state.
 Read the feature spec at ${SPEC_FILE}.
 Read .aidev/AGENTS.md for your role and instructions.
@@ -515,21 +539,22 @@ If not too complex: critique the spec for ambiguous user flows, boundary
 conditions, race conditions, and cases where two developers would implement
 differently. Save to ${QWEN_OUT}.
 " -y > /tmp/qwen-phase0.out 2>&1 &
-        QWEN_PID=$!
+            QWEN_PID=$!
 
-        wait $GEMINI_PID || GEMINI_EXIT=$?
-        wait $QWEN_PID || QWEN_EXIT=$?
+            wait $GEMINI_PID || GEMINI_EXIT=$?
+            wait $QWEN_PID || QWEN_EXIT=$?
 
-        if [ $GEMINI_EXIT -ne 0 ]; then
-            echo "  ⚠ Gemini exited with code $GEMINI_EXIT"
+            if [ $GEMINI_EXIT -ne 0 ]; then
+                echo "  ⚠ Gemini exited with code $GEMINI_EXIT"
+            fi
+            if [ $QWEN_EXIT -ne 0 ]; then
+                echo "  ⚠ Qwen exited with code $QWEN_EXIT"
+            fi
+
+            # Check complexity
+            check_complexity /tmp/gemini-phase0.out "Phase 0 — Gemini spec review"
+            check_complexity /tmp/qwen-phase0.out "Phase 0 — Qwen spec review"
         fi
-        if [ $QWEN_EXIT -ne 0 ]; then
-            echo "  ⚠ Qwen exited with code $QWEN_EXIT"
-        fi
-
-        # Check complexity
-        check_complexity /tmp/gemini-phase0.out "Phase 0 — Gemini spec review"
-        check_complexity /tmp/qwen-phase0.out "Phase 0 — Qwen spec review"
 
         echo ""
         echo "  Reviews saved:"
@@ -542,7 +567,7 @@ differently. Save to ${QWEN_OUT}.
 
         MERGE_EXIT=0
         run_agent "Claude spec merge (round $REVIEW_ROUND)" "$AGENT_TIMEOUT" \
-            claude -p "
+            $CLAUDE_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/CLAUDE.md for your instructions.
 
 Two reviewers have critiqued the feature spec at ${SPEC_FILE}:
@@ -589,12 +614,11 @@ Do NOT modify any other files. Do NOT write implementation code.
         break
     done
 
-    # Commit the final spec
-    git add "$SPEC_FILE" .aidev/reviews/spec/
-    git commit -m "spec(${FEATURE}): finalise spec after ${REVIEW_ROUND} review round(s)"
-
+    # Log and commit the final spec
     mark_phase_done 0
     log_to_spec 0 "✓ done" "Gemini CLI, Qwen Code, Claude Code" $((SECONDS - PHASE_START)) "Spec reviewed (${REVIEW_ROUND} round(s)), changes merged and committed"
+    git add "$SPEC_FILE"
+    git commit -m "spec(${FEATURE}): finalise spec after ${REVIEW_ROUND} review round(s)"
 fi
 
 
@@ -618,7 +642,7 @@ if should_run 1; then
 
     CLAUDE_A1_EXIT=0
     run_agent "Claude Session A1 (plan)" "$AGENT_TIMEOUT" \
-        claude -p "
+        $CLAUDE_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/CLAUDE.md for your instructions.
 Read the feature spec at ${SPEC_FILE}.
 
@@ -672,12 +696,15 @@ Do NOT write implementation code. Blueprint only.
         PLAN_GEMINI=".aidev/reviews/plan/${FEATURE}-gemini-r${REVIEW_ROUND}.md"
         PLAN_QWEN=".aidev/reviews/plan/${FEATURE}-qwen-r${REVIEW_ROUND}.md"
 
-        echo "  Running Gemini + Qwen plan reviews in parallel..."
+        if [ -s "$PLAN_GEMINI" ] && [ -s "$PLAN_QWEN" ]; then
+            echo "  ✓ Found existing plan reviews for round $REVIEW_ROUND. Skipping generation..."
+        else
+            echo "  Running Gemini + Qwen plan reviews in parallel..."
 
-        GEMINI_EXIT=0
-        QWEN_EXIT=0
+            GEMINI_EXIT=0
+            QWEN_EXIT=0
 
-        timeout "$AGENT_TIMEOUT" gemini -p "
+            timeout "$AGENT_TIMEOUT" $GEMINI_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/GEMINI.md for your role and instructions.
 Read the feature spec at ${SPEC_FILE}.
 Read the implementation plan at ${PLAN_FILE}.
@@ -686,9 +713,9 @@ Review for: architectural consistency with existing patterns, unnecessary
 complexity, missed integration points, reusable existing components.
 Save to ${PLAN_GEMINI}.
 " --yolo &
-        GEMINI_PID=$!
+            GEMINI_PID=$!
 
-        timeout "$AGENT_TIMEOUT" qwen -p "
+            timeout "$AGENT_TIMEOUT" $QWEN_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/AGENTS.md for your role and instructions.
 Read ${PLAN_FILE} and ${SPEC_FILE}.
 
@@ -696,16 +723,17 @@ Review for: over-engineering, missing error handling paths, unnecessary
 state complexity, test scenarios the plan does not address.
 Save to ${PLAN_QWEN}.
 " -y &
-        QWEN_PID=$!
+            QWEN_PID=$!
 
-        wait $GEMINI_PID || GEMINI_EXIT=$?
-        wait $QWEN_PID || QWEN_EXIT=$?
+            wait $GEMINI_PID || GEMINI_EXIT=$?
+            wait $QWEN_PID || QWEN_EXIT=$?
 
-        if [ $GEMINI_EXIT -ne 0 ]; then
-            echo "  ⚠ Gemini plan review exited with code $GEMINI_EXIT"
-        fi
-        if [ $QWEN_EXIT -ne 0 ]; then
-            echo "  ⚠ Qwen plan review exited with code $QWEN_EXIT"
+            if [ $GEMINI_EXIT -ne 0 ]; then
+                echo "  ⚠ Gemini plan review exited with code $GEMINI_EXIT"
+            fi
+            if [ $QWEN_EXIT -ne 0 ]; then
+                echo "  ⚠ Qwen plan review exited with code $QWEN_EXIT"
+            fi
         fi
 
         echo "  Plan reviews saved."
@@ -735,14 +763,14 @@ Do NOT write implementation code.
         # Try --continue if we have a session ID, otherwise start fresh
         if [ -n "$SESSION_A_ID" ]; then
             run_agent "Claude Session A2 (continue)" "$AGENT_TIMEOUT" \
-                claude -p "$REVISION_PROMPT" --continue "$SESSION_A_ID" --dangerously-skip-permissions \
+                $CLAUDE_CMD -p "$REVISION_PROMPT" --continue "$SESSION_A_ID" --dangerously-skip-permissions \
                 2>&1 | tee /tmp/claude-sessionA2.out || \
             run_agent "Claude Session A2 (fresh)" "$AGENT_TIMEOUT" \
-                claude -p "Read .aidev/CONTEXT.md. Read .aidev/CLAUDE.md. $REVISION_PROMPT" --dangerously-skip-permissions \
+                $CLAUDE_CMD -p "Read .aidev/CONTEXT.md. Read .aidev/CLAUDE.md. $REVISION_PROMPT" --dangerously-skip-permissions \
                 2>&1 | tee /tmp/claude-sessionA2.out
         else
             run_agent "Claude Session A2 (fresh)" "$AGENT_TIMEOUT" \
-                claude -p "Read .aidev/CONTEXT.md. Read .aidev/CLAUDE.md. $REVISION_PROMPT" --dangerously-skip-permissions \
+                $CLAUDE_CMD -p "Read .aidev/CONTEXT.md. Read .aidev/CLAUDE.md. $REVISION_PROMPT" --dangerously-skip-permissions \
                 2>&1 | tee /tmp/claude-sessionA2.out
         fi
 
@@ -761,12 +789,11 @@ Do NOT write implementation code.
         break
     done
 
-    # Commit the final plan
-    git add "$PLAN_FILE" "$SPEC_FILE" .aidev/reviews/plan/
-    git commit -m "plan(${FEATURE}): finalise plan after ${REVIEW_ROUND} review round(s)"
-
+    # Log and commit the final plan
     mark_phase_done 1
     log_to_spec 1 "✓ done" "Claude Code, Gemini CLI, Qwen Code" $((SECONDS - PHASE_START)) "Plan generated, reviewed (${REVIEW_ROUND} round(s)), and committed"
+    git add "$PLAN_FILE" "$SPEC_FILE"
+    git commit -m "plan(${FEATURE}): finalise plan after ${REVIEW_ROUND} review round(s)"
 fi
 
 
@@ -788,7 +815,7 @@ if should_run 2; then
     GEMINI_EXIT=0
     QWEN_EXIT=0
 
-    timeout "$AGENT_TIMEOUT" gemini -p "
+    timeout "$AGENT_TIMEOUT" $GEMINI_CMD -p "
 Read .aidev/CONTEXT.md for full project state.
 Read the feature spec at ${SPEC_FILE}.
 Read the implementation plan at ${PLAN_FILE}.
@@ -800,7 +827,7 @@ After writing, run them once to verify they compile (failures expected).
 " --yolo &
     GEMINI_PID=$!
 
-    timeout "$AGENT_TIMEOUT" qwen -p "
+    timeout "$AGENT_TIMEOUT" $QWEN_CMD -p "
 Read .aidev/CONTEXT.md for full project state.
 Read the feature spec at ${SPEC_FILE}.
 Read the implementation plan at ${PLAN_FILE}.
@@ -829,7 +856,7 @@ After writing, run them once to verify they compile.
 
     CLAUDE_MERGE_EXIT=0
     run_agent "Claude test merge" "$AGENT_TIMEOUT" \
-        claude -p "
+        $CLAUDE_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/CLAUDE.md for your instructions.
 
 Two independently-generated test suites exist:
@@ -851,12 +878,11 @@ Report: total test count and brief coverage summary.
         echo "  ⚠ Claude test merge exited with code $CLAUDE_MERGE_EXIT"
     fi
 
-    # Commit tests
-    git add tests/ .aidev/tests/
-    git commit -m "test(${FEATURE}): generate and merge test suites"
-
+    # Log and commit tests
     mark_phase_done 2
     log_to_spec 2 "✓ done" "Gemini CLI, Qwen Code, Claude Code" $((SECONDS - PHASE_START)) "Test suites generated, merged, and committed"
+    git add tests/ "$SPEC_FILE"
+    git commit -m "test(${FEATURE}): generate and merge test suites"
 fi
 
 
@@ -877,7 +903,7 @@ if should_run 3; then
 
     CLAUDE_B1_EXIT=0
     run_agent "Claude Session B1 (implement)" "$AGENT_TIMEOUT" \
-        claude -p "
+        $CLAUDE_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/CLAUDE.md for your instructions.
 
 ───────────────────────────────────────────────────
@@ -971,7 +997,7 @@ Report: total tests passing, files created/modified.
                 tail -n 100 /tmp/quality-errors.log > /tmp/quality-errors-truncated.log
 
                 run_agent "Claude auto-heal" "$AGENT_TIMEOUT" \
-                    claude -p "
+                    $CLAUDE_CMD -p "
 The quality gates (tests, linting, or type checking) failed with the following output:
 
 $(cat /tmp/quality-errors-truncated.log)
@@ -997,15 +1023,19 @@ NEVER modify the tests to bypass the errors.
 
     # ── Implementation review by Gemini + Qwen ─────────────────
     echo ""
-    echo "  Running Gemini + Qwen implementation reviews..."
 
     IMPL_GEMINI=".aidev/reviews/implementation/${FEATURE}-gemini.md"
     IMPL_QWEN=".aidev/reviews/implementation/${FEATURE}-qwen.md"
 
-    GEMINI_EXIT=0
-    QWEN_EXIT=0
+    if [ -s "$IMPL_GEMINI" ] && [ -s "$IMPL_QWEN" ]; then
+        echo "  ✓ Found existing implementation reviews. Skipping generation..."
+    else
+        echo "  Running Gemini + Qwen implementation reviews..."
 
-    timeout "$AGENT_TIMEOUT" gemini -p "
+        GEMINI_EXIT=0
+        QWEN_EXIT=0
+
+        timeout "$AGENT_TIMEOUT" $GEMINI_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/GEMINI.md for your role and instructions.
 Read ${SPEC_FILE} and ${PLAN_FILE}.
 Read every file in src/ that was created or modified for this feature.
@@ -1016,9 +1046,9 @@ accessibility issues, performance concerns.
 Save to ${IMPL_GEMINI}.
 Do NOT modify any files in src/.
 " --yolo &
-    GEMINI_PID=$!
+        GEMINI_PID=$!
 
-    timeout "$AGENT_TIMEOUT" qwen -p "
+        timeout "$AGENT_TIMEOUT" $QWEN_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/AGENTS.md for your role and instructions.
 Read ${SPEC_FILE} and ${PLAN_FILE}.
 Read every file in src/ that was created or modified for this feature.
@@ -1030,16 +1060,17 @@ accessibility issues (missing ARIA, keyboard traps).
 Save to ${IMPL_QWEN}.
 Do NOT modify any files in src/.
 " -y &
-    QWEN_PID=$!
+        QWEN_PID=$!
 
-    wait $GEMINI_PID || GEMINI_EXIT=$?
-    wait $QWEN_PID || QWEN_EXIT=$?
+        wait $GEMINI_PID || GEMINI_EXIT=$?
+        wait $QWEN_PID || QWEN_EXIT=$?
 
-    if [ $GEMINI_EXIT -ne 0 ]; then
-        echo "  ⚠ Gemini implementation review exited with code $GEMINI_EXIT"
-    fi
-    if [ $QWEN_EXIT -ne 0 ]; then
-        echo "  ⚠ Qwen implementation review exited with code $QWEN_EXIT"
+        if [ $GEMINI_EXIT -ne 0 ]; then
+            echo "  ⚠ Gemini implementation review exited with code $GEMINI_EXIT"
+        fi
+        if [ $QWEN_EXIT -ne 0 ]; then
+            echo "  ⚠ Qwen implementation review exited with code $QWEN_EXIT"
+        fi
     fi
 
     # Claude addresses review findings
@@ -1068,21 +1099,18 @@ After fixing, append to the '## Review Log' section of ${SPEC_FILE}:
 
     if [ -n "$SESSION_B_ID" ]; then
         run_agent "Claude Session B2 (continue)" "$AGENT_TIMEOUT" \
-            claude -p "$FIX_PROMPT" --continue "$SESSION_B_ID" --dangerously-skip-permissions \
+            $CLAUDE_CMD -p "$FIX_PROMPT" --continue "$SESSION_B_ID" --dangerously-skip-permissions \
             2>&1 | tee /tmp/claude-sessionB2.out || \
         run_agent "Claude Session B2 (fresh)" "$AGENT_TIMEOUT" \
-            claude -p "Read .aidev/CONTEXT.md. Read .aidev/CLAUDE.md. $FIX_PROMPT" --dangerously-skip-permissions \
+            $CLAUDE_CMD -p "Read .aidev/CONTEXT.md. Read .aidev/CLAUDE.md. $FIX_PROMPT" --dangerously-skip-permissions \
             2>&1 | tee /tmp/claude-sessionB2.out
     else
         run_agent "Claude Session B2 (fresh)" "$AGENT_TIMEOUT" \
-            claude -p "Read .aidev/CONTEXT.md. Read .aidev/CLAUDE.md. $FIX_PROMPT" --dangerously-skip-permissions \
+            $CLAUDE_CMD -p "Read .aidev/CONTEXT.md. Read .aidev/CLAUDE.md. $FIX_PROMPT" --dangerously-skip-permissions \
             2>&1 | tee /tmp/claude-sessionB2.out
     fi
 
     # Commit implementation
-    git add -A
-    git commit -m "feat(${FEATURE}): implement feature"
-
     if [ "$QUALITY_PASS" = true ]; then
         mark_phase_done 3
         log_to_spec 3 "✓ done" "Claude Code, Gemini CLI, Qwen Code" $((SECONDS - PHASE_START)) "Implementation complete, reviewed, quality gates passed"
@@ -1090,6 +1118,8 @@ After fixing, append to the '## Review Log' section of ${SPEC_FILE}:
         mark_phase_failed 3
         log_to_spec 3 "✗ failed" "Claude Code" $((SECONDS - PHASE_START)) "Quality gates failed after $MAX_RETRIES auto-heal retries"
     fi
+    git add -A
+    git commit -m "feat(${FEATURE}): implement feature"
 fi
 
 
@@ -1107,7 +1137,7 @@ if should_run 4; then
 
     GEMINI_EXIT=0
     run_agent "Gemini documentation" "$AGENT_TIMEOUT" \
-        gemini -p "
+        $GEMINI_CMD -p "
 Read .aidev/CONTEXT.md for full project state. Read .aidev/GEMINI.md for your role and instructions.
 Read ${PLAN_FILE}. Scan src/ for changes.
 
@@ -1124,13 +1154,12 @@ Do NOT remove existing content unless factually incorrect.
         echo "  ⚠ Gemini documentation exited with code $GEMINI_EXIT"
     fi
 
-    # Commit docs
-    git add docs/ "$SPEC_FILE"
-    git commit -m "docs(${FEATURE}): update documentation"
-
+    # Log and commit docs
     echo "  Phase 4 complete."
     mark_phase_done 4
     log_to_spec 4 "✓ done" "Gemini CLI" $((SECONDS - PHASE_START)) "Documentation updated and committed"
+    git add docs/ "$SPEC_FILE"
+    git commit -m "docs(${FEATURE}): update documentation"
 fi
 
 

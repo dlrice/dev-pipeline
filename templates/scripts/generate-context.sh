@@ -142,6 +142,9 @@ count_tests() {
         files=$((files + 0))
         test_count=$(grep -r "it(\|test(" "$dir" 2>/dev/null | wc -l || true)
         test_count=$((test_count + 0))
+        if [ "$files" -gt 0 ]; then
+            echo "- **$label**: $files files, ~$test_count test cases"
+        fi
     fi
 }
 

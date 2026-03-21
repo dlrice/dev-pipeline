@@ -11,6 +11,7 @@ const HELP = `
     aidev run <feature>        Run the pipeline for a feature spec
     aidev doctor               Check that all tools are installed and authenticated
     aidev setup                Install CLI agents (Claude Code, Gemini CLI, Qwen Code)
+    aidev update               Update spec template to latest version
     aidev help                 Show this help message
 
   Pipeline flags (for 'run'):
@@ -53,6 +54,11 @@ async function main() {
     case 'setup': {
       const { setup } = require('../lib/setup');
       await setup();
+      break;
+    }
+    case 'update': {
+      const { update } = require('../lib/update');
+      await update();
       break;
     }
     case 'help':
